@@ -129,14 +129,6 @@ class Connected : public Layer {
 
             backward_bias(delta);
 
-            // int m = neuralSize;
-            // int k = 1;
-            // int n = inputSize;
-            // float * a = input.get();
-            // float * b = delta;
-            // float * c = update_weights.get();
-
-            // gemm(1,0,m,n,k,1,a,m,b,k,0,c,n);
             int m = inputSize;
             int k = 1;
             int n = neuralSize;
@@ -146,24 +138,11 @@ class Connected : public Layer {
 
             gemm(0,1,m,n,k,1,a,k,b,k,0,c,n);
 
-
-            // for(int i =0; i< inputSize * neuralSize; i++) {
-                // LOG("update weights: " << -0.5f * update_weights[i] + weights[i]);
-            // }
-
             // delta = delta * weight
-            // update delta
+            // update delta for backpropagate
             for (int i = 0; i < neuralSize; i++) {
                 layer_delta[i] = delta[i];
             }
-            // m = inputSize;
-            // k = neuralSize;
-            // n = 1;
-            // a = weights.get();
-            // b = layer_delta.get();
-            // c = delta;
-
-            // gemm(0,1,m,n,k,1,a,m,b,k,0,c,n);
 
             m = inputSize;
             k = neuralSize;
@@ -173,13 +152,10 @@ class Connected : public Layer {
             c = delta;
 
             gemm(0,0,m,n,k,1,a,k,b,n,0,c,n);
-            // for (int i = 0 ; i < inputSize; i ++) {
-            //     LOG("update delta: " << delta[i]);
-            // }
         };
 
         void update() override {
-            float lr = 0.2f;
+            float lr = 0.5f;
             for (int i = 0; i < inputSize * neuralSize; i++) {
                 weights[i] += -lr * update_weights[i];
                 // LOG("weight updated: " << weights[i]);
@@ -227,14 +203,17 @@ class Network {
 
             // loop over all layer in network
             for (int l = 0; l < n; l++) {
+                // LOG("Forwarding layer " << l << "!");
                 layers[l]->forward(workspace.get());
             }
 
-            // get output after forwarding
+            // get output after forwarding 
+            cout << "output: " ;
             for (int i = 0; i < outputSize; i++) {
                 output[i] = workspace[i];
-                LOG("output: " << output[i]);
+                cout << output[i] << " ";
             }
+            cout << endl;
         };
         void backward_net() {
             for (int i = n-1; i > -1; i--) {
@@ -291,27 +270,27 @@ class Network {
 
 int main(int argc, char** argv) {
     /*TODO: 
-    1. Add random to weight
-    2. 
+    1. test with multi layer
+    2. add more input dimension
     */
-    int inputSize = 5;
+    int inputSize = 8;
     int hiddenSize = 100;
+    int hiddenSize2 = 200;
     int outputSize = 5;
 
-    float * input = new float[inputSize] {0.02, 0.3, 0.025, 0.05, 0.1};
-    float * ground_truth = new float[outputSize] {0.02, 0.42, 0.3, 0.99, 0.1};
+    float * input = new float[inputSize] {0.4, 0.3,  0.7, 0.02, 0.3, 0.025, 0.05, 0.1};
+    float * ground_truth = new float[outputSize] {0.42, 0.3, 0.19, 0.1};
 
     shared_ptr<Connected> conn1 = make_shared<Connected>(inputSize,hiddenSize);
-    // conn1->load_weight(w1);
-    // conn1->load_bias(b1);
 
-    shared_ptr<Connected> conn2 = make_shared<Connected>(hiddenSize,outputSize);
-    // conn2->load_weight(w2);
-    // conn2->load_bias(b2);
+    shared_ptr<Connected> conn2 = make_shared<Connected>(hiddenSize,hiddenSize2);
+
+    shared_ptr<Connected> conn3 = make_shared<Connected>(hiddenSize2,outputSize);
 
     unique_ptr<Network> net = make_unique<Network>();
     net->add_layer(conn1);
     net->add_layer(conn2);
+    net->add_layer(conn3);
 
     net->build();
 
@@ -326,7 +305,4 @@ int main(int argc, char** argv) {
     }
     delete input;
     delete ground_truth;
-
-    // net->forward_net(input);
-
 }
