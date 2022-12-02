@@ -5,6 +5,7 @@
 #include <iomanip>
 
 #include "gemm.h"
+#include "mnist.h"
 
 using namespace std;
 
@@ -273,36 +274,51 @@ int main(int argc, char** argv) {
     1. test with multi layer
     2. add more input dimension
     */
-    int inputSize = 8;
-    int hiddenSize = 100;
-    int hiddenSize2 = 200;
-    int outputSize = 5;
+    // int inputSize = 8;
+    // int hiddenSize = 100;
+    // int hiddenSize2 = 200;
+    // int outputSize = 5;
 
-    float * input = new float[inputSize] {0.4, 0.3,  0.7, 0.02, 0.3, 0.025, 0.05, 0.1};
-    float * ground_truth = new float[outputSize] {0.42, 0.3, 0.19, 0.1};
+    // float * input = new float[inputSize] {0.4, 0.3,  0.7, 0.02, 0.3, 0.025, 0.05, 0.1};
+    // float * ground_truth = new float[outputSize] {0.42, 0.3, 0.19, 0.1};
+
+
+    // Load data
+    mnist dataset;
+    size_t trainImageSize = dataset.read_training_images();
+    size_t trainLabelSize = dataset .read_training_labels();
+    assert(trainImageSize == trainLabelSize);
+
+    // build model
+    int inputSize = 784;
+    int hiddenSize = 128;
+    int outputSize = 10;
 
     shared_ptr<Connected> conn1 = make_shared<Connected>(inputSize,hiddenSize);
 
-    shared_ptr<Connected> conn2 = make_shared<Connected>(hiddenSize,hiddenSize2);
-
-    shared_ptr<Connected> conn3 = make_shared<Connected>(hiddenSize2,outputSize);
+    shared_ptr<Connected> conn2 = make_shared<Connected>(hiddenSize,outputSize);
 
     unique_ptr<Network> net = make_unique<Network>();
     net->add_layer(conn1);
     net->add_layer(conn2);
-    net->add_layer(conn3);
 
     net->build();
-
-    int n_epochs = 1000;
-    for (int e = 0; e < n_epochs; e++) {
-        LOG("Epoch " << e);
-        net->forward_net(input);
-        float err = net->calc_loss(ground_truth, outputSize);
-        LOG("Network error: " << err);
-        net->backward_net();
-        net->update_net();
+    for (int d = 0; d < 6; d++){
+        auto item = dataset.get_next_item();
+        LOG("Image size " << get<0>(item).size());
+        LOG("Label number " << get<1>(item));
     }
-    delete input;
-    delete ground_truth;
+    
+
+    // int n_epochs = 1000;
+    // for (int e = 0; e < n_epochs; e++) {
+    //     LOG("Epoch " << e);
+    //     net->forward_net(input);
+    //     float err = net->calc_loss(ground_truth, outputSize);
+    //     LOG("Network error: " << err);
+    //     net->backward_net();
+    //     net->update_net();
+    // }
+    // delete input;
+    // delete ground_truth;
 }

@@ -1,234 +1,308 @@
 #include <iostream>
 #include <vector>
+#include <cmath>
+#include <memory>
+#include <iomanip>
 
 #include "gemm.h"
-#include <math.h>
 
-#define LOG(x) std::cout << x << std::endl;
+using namespace std;
 
-typedef enum {CONNECTED, CONVOLUTION} LAYER_TYPE;
-class layer {
+#define LOG(x) cout << x << endl
+
+typedef enum {CONNECTED, CONVOLUTION, BLANK} LAYER_TYPE;
+
+float rand_uniform(float min, float max) {
+    if (max < min) {
+        float swap = min;
+        min = max;
+        max = swap;
+    }
+    return ((float)rand()/RAND_MAX * (max - min)) + min;
+}
+
+void show_matrix(float* mat, int rows, int cols) {
+    std::cout << std::setprecision(4);
+    for (int i = 0; i < rows; i++){
+        for (int j = 0; j < cols; j++) {
+            std::cout << mat[i*cols + j] << "\t";
+        }
+        std::cout << std::endl;
+    }
+
+}
+class Layer {
+    friend class Network;
     public:
-        layer(std::string name, LAYER_TYPE type) : name{name}, type{type} {};
-        std::string name="blank";
-        LAYER_TYPE type=CONVOLUTION; 
-        virtual void forward_net(float * inp, float * out) {};
-        virtual size_t get_size() {};
-        virtual void backward_net(float * delta) {};
-        virtual void update_net() {};
+        Layer(string name, LAYER_TYPE type): name{name}, type{type} {};
+        string name = "blank";
+        LAYER_TYPE type = BLANK;
+    
+    protected:
+        virtual void forward(float * inp) = 0;
+        virtual size_t get_size() = 0;
+        virtual size_t get_input_size() = 0;
+        virtual void backward(float * delta) = 0;
+        virtual void update() = 0;
 };
 
-class conn_layer : public layer{
+class Connected : public Layer {
     public:
-        conn_layer(int n, int input_size) : layer{"connected", CONNECTED}, 
-        neural_size{n}, input_size{input_size}{
-            weights = (float *)calloc(n*input_size, sizeof(float));
-            bias = (float *)calloc(1, sizeof(float));
-            output = (float *)calloc(n, sizeof(float));
-        };
+        Connected(int inputSize, int n) : Layer("connected", CONNECTED), 
+        neuralSize{n}, inputSize{inputSize} {
+            weights = make_unique<float[]>(neuralSize * inputSize);   
+            bias = make_unique<float[]>(1);   
+            output = make_unique<float[]>(neuralSize);   
+            input = make_unique<float[]>(inputSize);
+            gradient = make_unique<float[]>(neuralSize);
+            update_weights = make_unique<float[]>(neuralSize*inputSize);
+            update_bias = make_unique<float[]>(1);
+            // temp variable
+            layer_delta = make_unique<float[]>(neuralSize);
 
-        void forward_net(float * inp, float * out) override {
-            input = (float *)calloc(2, sizeof(float));
-            for (int i = 0; i < neural_size; i++){
-                // LOG(inp[i]);
-                input[i] = inp[i];
+            //random initialize weight and bias
+            // srand(time(0)); use for different seeding
+            float scale = sqrt(2./inputSize);
+            for(int i = 0; i < inputSize * neuralSize; i++){
+                weights[i] = scale * rand_uniform(-1, 1);
             }
-            int m = 1;
-            int n = neural_size;
-            int k = input_size;
-            float * a = inp;
-            float * b = weights;
-            float * c = out;
-
-            gemm(0,0, m, n, k, 1, a, m, b, k, 1, c, n);
-            for (int i = 0; i < input_size; i++) {
-                out[i] += *bias;
-                out[i] = sigmoid(out[i]);
-                output[i] = out[i];
-            }
+            bias[0] = 0; // bias should be size of output for more general case.
         };
 
         void load_weight(float * w) {
-            for(int i = 0; i < neural_size*input_size; i++) {
+            for (int i = 0; i < neuralSize*inputSize; i++) {
                 weights[i] = w[i];
-            } 
+            }
         };
 
-        void load_bias(float *b){
-            bias = b;
+        void load_bias(float b) {
+            bias[0] = b;
         };
-
+        
         size_t get_size() override {
-            return neural_size;
+            return neuralSize;
         };
 
-        void backward_net(float * delta) override {
-            float* gradient = (float *)calloc(neural_size, sizeof(float));
+        size_t get_input_size() override {
+            return  inputSize;
+        };
+
+    protected:
+        void forward(float * inp) override {
+            //fill the input
+            for (int i = 0; i < inputSize; i++) {
+                input[i] = inp[i];
+            }
+            int m = 1;
+            int n = neuralSize;
+            int k = inputSize;
+            float * a = input.get(); 
+            float * b = weights.get(); //weights
+            float * c = output.get();
+
+            // LOG("Matrix A: ");
+            // show_matrix(a, m, k);
+            // LOG("Matrix B: ");
+            // show_matrix(b, k, n);
+            gemm(0,0,m,n,k,1,a,k,b,n,0,c,n);
+            // LOG("Matrix C: ");
+            // show_matrix(c, m, n);
+
+            // need to compute gradient in advance
+            for (int i = 0; i < neuralSize; i++) {
+                output[i] += bias[0];
+                output[i] = sigmoid(output[i]);
+
+                // compute gradient in advance
+                gradient[i] = gradient_sigmoid(output[i]);
+
+                // reassign output to input
+                inp[i] = output[i];
+            }
+        };
+        void backward(float * delta) override {
             // update = delta * gradient_sigmoid * input
-            update_weights = (float *)calloc(neural_size * input_size, sizeof(float));
-            gradient_sigmoid(gradient);
-            for(int i = 0; i < neural_size; i++) {
+            for(int i = 0; i < neuralSize; i++) {
                 delta[i] = gradient[i] * delta[i];
                 // LOG("delta backward: " << delta[i]);
             }
 
-            int m = neural_size;
-            int k = 1;
-            int n = input_size;
-            float * a = input;
-            float * b = delta;
-            float * c = update_weights;
+            backward_bias(delta);
 
-            gemm(1,0,m,n,k,1,a,m,b,k,0,c,n);
-            for(int i =0; i< input_size * neural_size; i++) {
-                // LOG(-0.5f * update_weights[i] + weights[i]);
-            }
+            int m = inputSize;
+            int k = 1;
+            int n = neuralSize;
+            float * a = input.get();
+            float * b = delta;
+            float * c = update_weights.get();
+
+            gemm(0,1,m,n,k,1,a,k,b,k,0,c,n);
+
             // delta = delta * weight
-            // update delta
-            float * layer_delta = (float *)calloc(neural_size, sizeof(float));
-            for (int i = 0; i < neural_size; i++) {
+            // update delta for backpropagate
+            for (int i = 0; i < neuralSize; i++) {
                 layer_delta[i] = delta[i];
             }
-            m = 2;
-            k = 2;
+
+            m = inputSize;
+            k = neuralSize;
             n = 1;
-            a = weights;
-            b = layer_delta;
+            a = weights.get();
+            b = layer_delta.get();
             c = delta;
 
-            gemm(0,1,m,n,k,1,a,m,b,k,0,c,n);
-            // for (int i = 0 ; i < input_size; i ++) {
-            //     LOG("update delta: " << delta[i]);
-            // }
-
+            gemm(0,0,m,n,k,1,a,k,b,n,0,c,n);
         };
 
-        float sigmoid(float x) {
-            return 1 / (1 + exp(-x)); 
-        };
-
-        void update_net() override {
-            for (int i = 0; i < input_size * neural_size; i++) {
-                weights[i] += -0.5f * update_weights[i];
+        void update() override {
+            float lr = 0.5f;
+            for (int i = 0; i < inputSize * neuralSize; i++) {
+                weights[i] += -lr * update_weights[i];
                 // LOG("weight updated: " << weights[i]);
             }
+            // only 1 bias
+            bias[0] += -lr * update_bias[0];
         };
 
     private:
-        size_t neural_size;
-        int input_size;
-        float * output;
-        float * input;
-        float * weights;
-        float * bias;
-        float * update_weights;
-        void gradient_sigmoid(float * gradient) {
-            for(int i = 0; i < neural_size; i++){
-                gradient[i] = output[i] * (1 - output[i]);
+        size_t neuralSize;
+        int inputSize;
+        unique_ptr<float[]> output;
+        unique_ptr<float[]> input;
+        unique_ptr<float[]> weights;
+        unique_ptr<float[]> bias;
+        unique_ptr<float[]> update_weights;
+        unique_ptr<float[]> update_bias;
+        unique_ptr<float[]> gradient;
+        unique_ptr<float[]> layer_delta;
+        float sigmoid(float x) {
+            return 1 / (1 + exp(-x));
+        };
+
+        float gradient_sigmoid(float x) {
+            return x * (1-x);
+        };
+        
+        void backward_bias(float * delta) {
+            update_bias[0] = 0;
+            for(int i = 0; i < neuralSize; i++){
+                update_bias[0] += delta[i];
             }
         };
 };
 
-
-class network {
+class Network {
     public:
-        std::vector<layer*> layers;
-        size_t n = 0; // number of layer
-        void forward(float *inp, float *out) {
-            LOG(inp[0] << " " << inp[1]);
-            for (int i = 0; i < n; i ++ ) {
-                output = (float *)calloc(workspace_size, sizeof(float));
-                layers[i]->forward_net(inp, output);
-
-                // update input
-                for (int j = 0; j < workspace_size; j++) {
-                    out[j] = output[j];
-                    inp[j] = output[j];
-                    LOG("output: " << output[j]);
-                }
+        vector<shared_ptr<Layer>> layers;
+        size_t n = 0;
+        void forward_net(float * inp) {
+            // copy input to the workspace
+            for(int i = 0; i < inputSize; i++){
+                workspace[i] = inp[i];
             }
+
+            // loop over all layer in network
+            for (int l = 0; l < n; l++) {
+                // LOG("Forwarding layer " << l << "!");
+                layers[l]->forward(workspace.get());
+            }
+
+            // get output after forwarding 
+            cout << "output: " ;
+            for (int i = 0; i < outputSize; i++) {
+                output[i] = workspace[i];
+                cout << output[i] << " ";
+            }
+            cout << endl;
         };
-        void backward(){
-            // for (int i = 0; i < output_size; i++) {
-            //     LOG("delta: " << delta[i]);
-            // }
-            // layers.back()->backward_net(delta);
+        void backward_net() {
             for (int i = n-1; i > -1; i--) {
-                layers[i]->backward_net(delta);
+                layers[i]->backward(delta.get());
             }
         };
-        void update() {
+        void update_net() {
             for (int i = 0; i < n; i++) {
-                layers[i]->update_net();
+                layers[i]->update();
             }
-        };
-        float * output;
-        size_t output_size;
-        size_t workspace_size = 0;
-        void add_layer(layer &l) {
-            if (l.get_size() > workspace_size) {
-                workspace_size = l.get_size();
-            }
-            n++;
-            layers.push_back(&l);
         };
 
-        float calc_loss(float* gt, float* pred, int n) {
-            output_size = layers.back()->get_size();
-            delta = (float *)calloc(output_size, sizeof(float));
+        template <typename T>
+        void add_layer(shared_ptr<T> &l) {
+            if(!n) {
+                inputSize = l->get_input_size();
+                maxSize = inputSize;
+            }
+            outputSize = l->get_size();
+            if (outputSize > maxSize) {
+                maxSize = outputSize;
+            }
+            layers.push_back(l);
+            n++;
+        };
+
+        float calc_loss(float* gt, int n) {
+            err = 0.0f;
             for (int i = 0; i < n; i++) {
-                err += (1.f/2) * pow((gt[i] - pred[i]), 2);
-                delta[i] = pred[i] - gt[i];
+                err += (1.f/2) * pow((gt[i] - output[i]), 2);
+                delta[i] = output[i] - gt[i];
             }
 
             return err;
         };
 
+        void build() {
+            LOG(maxSize << " " << outputSize);
+            workspace = make_unique<float[]>(maxSize);
+            output = make_unique<float[]>(outputSize);
+            delta = make_unique<float[]>(maxSize);
+        };
+    
     private:
+        size_t inputSize = 0;
+        size_t outputSize = 0;
+        size_t maxSize = 0;
         float err = 0.0f;
-        float * delta;
+        unique_ptr<float[]> delta;
+        unique_ptr<float[]> output;
+        unique_ptr<float[]> workspace;
 };
 
 
-int main() {
-    float input[] = {0.05, 0.1};
-    float w1[] = {0.15, 0.25,
-                  0.2, 0.3};
-    float b1{0.35};
-    float w2[] = {0.4, 0.5,
-                  0.45, 0.55};
-    float b2{0.6};
+int main(int argc, char** argv) {
+    /*TODO: 
+    1. test with multi layer
+    2. add more input dimension
+    */
+    int inputSize = 8;
+    int hiddenSize = 100;
+    int hiddenSize2 = 200;
+    int outputSize = 5;
 
-    float ground_truth[] = {0.01, 0.99};
+    float * input = new float[inputSize] {0.4, 0.3,  0.7, 0.02, 0.3, 0.025, 0.05, 0.1};
+    float * ground_truth = new float[outputSize] {0.42, 0.3, 0.19, 0.1};
 
-    conn_layer conn1{2, 2};
-    conn1.load_weight(w1);
-    conn1.load_bias(&b1);
+    shared_ptr<Connected> conn1 = make_shared<Connected>(inputSize,hiddenSize);
 
-    conn_layer conn2{2, 2};
-    conn2.load_weight(w2);
-    conn2.load_bias(&b2);
+    shared_ptr<Connected> conn2 = make_shared<Connected>(hiddenSize,hiddenSize2);
 
-    network net;
-    net.add_layer(conn1);
-    net.add_layer(conn2);
+    shared_ptr<Connected> conn3 = make_shared<Connected>(hiddenSize2,outputSize);
 
-    size_t output_size = 2;
-    int n_epochs = 2;
-    for (int e = 0; e < n_epochs; e++){
-        float * output = (float *)calloc(output_size, sizeof(float));
-        net.forward(input, output);
-        // for (int i = 0; i < output_size; i++){
-        //     LOG("output " << i<< ": " << output[i]);
-        // }
+    unique_ptr<Network> net = make_unique<Network>();
+    net->add_layer(conn1);
+    net->add_layer(conn2);
+    net->add_layer(conn3);
 
-        float err = net.calc_loss(ground_truth, output, output_size);
+    net->build();
+
+    int n_epochs = 1000;
+    for (int e = 0; e < n_epochs; e++) {
+        LOG("Epoch " << e);
+        net->forward_net(input);
+        float err = net->calc_loss(ground_truth, outputSize);
         LOG("Network error: " << err);
-
-        net.backward();
-
-        net.update();
-
+        net->backward_net();
+        net->update_net();
     }
-    return 0;
+    delete input;
+    delete ground_truth;
 }

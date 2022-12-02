@@ -67,6 +67,11 @@ int main() {
     // auto myMat = make_matrix(rows, cols);
 
     // show_matrix(myMat, rows, cols);
-    
+
+    int r[5] = {1, 2, 3, 4, 5};
+    int s[5] = {9, 8, 7, 6, 5};
+    int i =0;
+    std::cout << r[i++] * s[i++] << std::endl;
+    std::cout << i << std::endl;
     return 0;
 }
