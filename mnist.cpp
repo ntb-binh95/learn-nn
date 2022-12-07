@@ -64,7 +64,9 @@ int mnist::read_training_images() {
         }
         training_images.push_back(img);
     }
-    items = train_size;
+    if(train_size != dataset_size){
+        dataset_size = train_size;
+    }
     return training_images.size();
 }
 
@@ -104,14 +106,19 @@ int mnist::read_training_labels() {
     uint8_t *labels_buffer = reinterpret_cast<uint8_t*>(buffer.get() + 8);
 
     for (int i = 0; i < train_size; i++){
-        int label = *labels_buffer++;
+        uint8_t label = *labels_buffer++;
         training_labels.push_back(label);
     }
-    items = train_size;
+    if(train_size != dataset_size) {
+        dataset_size = train_size;
+    }
     return training_labels.size();
 }
 
 std::tuple<image, int> mnist::get_next_item() {
     int current_index = index++;
+    if (index == dataset_size) {
+        index = 0;
+    }
     return std::make_tuple(training_images[current_index], training_labels[current_index]);
 }

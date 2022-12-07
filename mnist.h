@@ -20,6 +20,7 @@ class mnist {
         uint32_t read_header(const std::unique_ptr<char[]>& buffer, size_t position);
         std::vector<image> training_images;
         std::vector<uint8_t> training_labels;
-        size_t items = 0;
         size_t index = 0;
+        size_t dataset_size = 0;
+        void set_training_size(size_t size);
 };

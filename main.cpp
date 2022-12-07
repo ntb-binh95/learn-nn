@@ -6,6 +6,7 @@
 
 #include "gemm.h"
 #include "mnist.h"
+#include "progress_bar.h"
 
 using namespace std;
 
@@ -209,12 +210,40 @@ class Network {
             }
 
             // get output after forwarding 
-            cout << "output: " ;
+            // cout << "output: " ;
             for (int i = 0; i < outputSize; i++) {
                 output[i] = workspace[i];
-                cout << output[i] << " ";
+                // cout << output[i] << " ";
             }
-            cout << endl;
+            // cout << endl;
+        };
+        void test_net(float * inp) {
+            // copy input to the workspace
+            for(int i = 0; i < inputSize; i++){
+                workspace[i] = inp[i];
+            }
+
+            // loop over all layer in network
+            for (int l = 0; l < n; l++) {
+                // LOG("Forwarding layer " << l << "!");
+                layers[l]->forward(workspace.get());
+            }
+
+            // get output after forwarding 
+            for (int i = 0; i < outputSize; i++) {
+                output[i] = workspace[i];
+            }
+
+            float max = 0;
+            int max_index = 0;
+            for (int i = 0; i < outputSize; i++) {
+                if (max < output[i]){
+                    max = output[i];
+                    max_index = i;
+                }
+            }
+            LOG("Output value: " << max_index);
+            LOG("Max value " << max);
         };
         void backward_net() {
             for (int i = n-1; i > -1; i--) {
@@ -268,6 +297,23 @@ class Network {
         unique_ptr<float[]> workspace;
 };
 
+unique_ptr<float[]> preprocess_input(image img) {
+    unique_ptr<float[]> input = make_unique<float[]>(img.size());
+    for(int i = 0; i < img.size(); i++){
+        input[i] = img[i] / 255.0;
+    }
+    return input;
+}
+
+unique_ptr<float[]> preprocess_gt(float label) {
+    unique_ptr<float[]> ground_truth = make_unique<float[]>(10);
+    ground_truth[label] = 1;
+    // for (int i = 0; i < 10; i++) {
+    //     LOG(ground_truth[i]);
+    // }
+    return ground_truth;
+}
+
 
 int main(int argc, char** argv) {
     /*TODO: 
@@ -282,11 +328,10 @@ int main(int argc, char** argv) {
     // float * input = new float[inputSize] {0.4, 0.3,  0.7, 0.02, 0.3, 0.025, 0.05, 0.1};
     // float * ground_truth = new float[outputSize] {0.42, 0.3, 0.19, 0.1};
 
-
     // Load data
     mnist dataset;
     size_t trainImageSize = dataset.read_training_images();
-    size_t trainLabelSize = dataset .read_training_labels();
+    size_t trainLabelSize = dataset.read_training_labels();
     assert(trainImageSize == trainLabelSize);
 
     // build model
@@ -303,13 +348,44 @@ int main(int argc, char** argv) {
     net->add_layer(conn2);
 
     net->build();
-    for (int d = 0; d < 6; d++){
-        auto item = dataset.get_next_item();
-        LOG("Image size " << get<0>(item).size());
-        LOG("Label number " << get<1>(item));
-    }
-    
 
+    float avg_err = 0;
+    for (int e = 0; e < 5; e++){
+        pBar bar;
+        LOG("Epoch: " << e);
+        for (int d = 0; d < trainImageSize; d++){
+            if(d % (trainImageSize/100) == 0){
+                bar.update(1);
+                bar.print();
+            }
+            auto item = dataset.get_next_item();
+            unique_ptr<float[]> input = preprocess_input(get<0>(item));
+            unique_ptr<float[]> ground_truth = preprocess_gt(get<1>(item));
+            net->forward_net(input.get());
+            float err = net->calc_loss(ground_truth.get(), outputSize);
+            net->backward_net();
+            net->update_net();
+
+            avg_err = (avg_err*d + err)/(d+1);
+            bar.update_err(avg_err);
+        }
+        LOG("");
+        for (int i = 0; i < 10; i++){
+            auto item = dataset.get_next_item();
+            LOG("Label number " << get<1>(item));
+            unique_ptr<float[]> input = preprocess_input(get<0>(item));
+            unique_ptr<float[]> ground_truth = preprocess_gt(get<1>(item));
+
+            net->test_net(input.get());
+        }
+    }
+
+    // net->forward_net(input);
+    // float err = net->calc_loss(ground_truth, outputSize);
+    // LOG("Network error: " << err);
+    // net->backward_net();
+    // net->update_net();
+    
     // int n_epochs = 1000;
     // for (int e = 0; e < n_epochs; e++) {
     //     LOG("Epoch " << e);
@@ -319,6 +395,5 @@ int main(int argc, char** argv) {
     //     net->backward_net();
     //     net->update_net();
     // }
-    // delete input;
-    // delete ground_truth;
+    return 0;
 }
