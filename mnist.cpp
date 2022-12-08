@@ -50,6 +50,7 @@ int mnist::read_training_images() {
 
     unsigned image_width = read_header(buffer, 2);
     unsigned image_height = read_header(buffer, 3);
+    imageSize = image_width * image_height;
 
     assert(size==(image_height * image_width * train_size + 16));
 
@@ -121,4 +122,19 @@ std::tuple<image, int> mnist::get_next_item() {
         index = 0;
     }
     return std::make_tuple(training_images[current_index], training_labels[current_index]);
+}
+
+batch_item mnist::get_next_batch() {
+    std::unique_ptr<float[]> input = std::make_unique<float[]>(imageSize * batch);
+    std::unique_ptr<float[]> ground_truth = std::make_unique<float[]>(10 * batch);
+    for(int i = 0; i < batch; i++) {
+        auto item = get_next_item();
+        image img = std::get<0>(item);
+        int label = std::get<1>(item);
+        for (int j = 0; j < imageSize; j++){
+            input[i*imageSize + j] = img[j] / 255.0;
+        }
+        ground_truth[i*10 + label] = 1;
+    }
+    return std::make_tuple(std::move(input), std::move(ground_truth));
 }

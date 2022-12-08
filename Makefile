@@ -1,5 +1,5 @@
 main: main.cpp gemm.cpp
-	g++ -o main main.cpp gemm.cpp mnist.cpp
+	g++ -o main main.cpp gemm.cpp mnist.cpp -ggdb -O0
 
 example: example.cpp gemm.cpp
 	g++ -o example example.cpp gemm.cpp

@@ -46,21 +46,23 @@ class Layer {
         virtual size_t get_input_size() = 0;
         virtual void backward(float * delta) = 0;
         virtual void update() = 0;
+        int batch = 0;
 };
 
 class Connected : public Layer {
     public:
-        Connected(int inputSize, int n) : Layer("connected", CONNECTED), 
-        neuralSize{n}, inputSize{inputSize} {
+        Connected(int inputSize, int n, int batchSize) : Layer("connected", CONNECTED), 
+        neuralSize{n}, inputSize{inputSize}{
+            batch = batchSize;
             weights = make_unique<float[]>(neuralSize * inputSize);   
-            bias = make_unique<float[]>(1);   
-            output = make_unique<float[]>(neuralSize);   
-            input = make_unique<float[]>(inputSize);
-            gradient = make_unique<float[]>(neuralSize);
+            bias = make_unique<float[]>(neuralSize);   
+            output = make_unique<float[]>(batch * neuralSize);   
+            input = make_unique<float[]>(batch * inputSize);
+            gradient = make_unique<float[]>(batch * neuralSize);
             update_weights = make_unique<float[]>(neuralSize*inputSize);
-            update_bias = make_unique<float[]>(1);
+            update_bias = make_unique<float[]>(neuralSize);
             // temp variable
-            layer_delta = make_unique<float[]>(neuralSize);
+            layer_delta = make_unique<float[]>(batch * neuralSize);
 
             //random initialize weight and bias
             // srand(time(0)); use for different seeding
@@ -68,7 +70,10 @@ class Connected : public Layer {
             for(int i = 0; i < inputSize * neuralSize; i++){
                 weights[i] = scale * rand_uniform(-1, 1);
             }
-            bias[0] = 0; // bias should be size of output for more general case.
+            for(int i = 0; i < neuralSize; i++){
+                bias[i] = 0;
+            }
+            // bias[0] = 0; // bias should be size of output for more general case.
         };
 
         void load_weight(float * w) {
@@ -92,10 +97,12 @@ class Connected : public Layer {
     protected:
         void forward(float * inp) override {
             //fill the input
-            for (int i = 0; i < inputSize; i++) {
+            for (int i = 0; i < batch * inputSize; i++) {
                 input[i] = inp[i];
             }
-            int m = 1;
+
+            // calculate weight^T * input
+            int m = batch;
             int n = neuralSize;
             int k = inputSize;
             float * a = input.get(); 
@@ -110,21 +117,22 @@ class Connected : public Layer {
             // LOG("Matrix C: ");
             // show_matrix(c, m, n);
 
-            // need to compute gradient in advance
-            for (int i = 0; i < neuralSize; i++) {
-                output[i] += bias[0];
-                output[i] = sigmoid(output[i]);
+            for(int b =0 ; b < batch; b++) {
+                for (int i = 0; i < neuralSize; i++) {
+                    output[b * neuralSize + i] += bias[i]; // output = output + bias
+                    output[b * neuralSize + i] = sigmoid(output[b*neuralSize+i]); // output = activate(output)
 
-                // compute gradient in advance
-                gradient[i] = gradient_sigmoid(output[i]);
+                    // compute gradient in advance
+                    gradient[b * neuralSize + i] = gradient_sigmoid(output[b * neuralSize + i]);
 
-                // reassign output to input
-                inp[i] = output[i];
+                    // reassign output to input
+                    inp[b * neuralSize + i] = output[b * neuralSize + i];
+                }
             }
-        };
+       };
         void backward(float * delta) override {
             // update = delta * gradient_sigmoid * input
-            for(int i = 0; i < neuralSize; i++) {
+            for(int i = 0; i < batch * neuralSize; i++) {
                 delta[i] = gradient[i] * delta[i];
                 // LOG("delta backward: " << delta[i]);
             }
@@ -132,42 +140,45 @@ class Connected : public Layer {
             backward_bias(delta);
 
             int m = inputSize;
-            int k = 1;
+            int k = batch; // add batch
             int n = neuralSize;
             float * a = input.get();
             float * b = delta;
             float * c = update_weights.get();
 
-            gemm(0,1,m,n,k,1,a,k,b,k,0,c,n);
+            gemm(1,0,m,n,k,1,a,m,b,n,0,c,n);
 
             // delta = delta * weight
             // update delta for backpropagate
-            for (int i = 0; i < neuralSize; i++) {
+            for (int i = 0; i < batch * neuralSize; i++) {
                 layer_delta[i] = delta[i];
             }
 
-            m = inputSize;
+            m = batch;
             k = neuralSize;
-            n = 1;
-            a = weights.get();
-            b = layer_delta.get();
+            n = inputSize; // add batch
+            a = layer_delta.get();
+            b = weights.get();
             c = delta;
 
-            gemm(0,0,m,n,k,1,a,k,b,n,0,c,n);
+            gemm(0,1,m,n,k,1,a,k,b,k,0,c,n);
         };
 
         void update() override {
             float lr = 0.5f;
             for (int i = 0; i < inputSize * neuralSize; i++) {
-                weights[i] += -lr * update_weights[i];
+                weights[i] += -lr/batch * update_weights[i];
                 // LOG("weight updated: " << weights[i]);
             }
             // only 1 bias
-            bias[0] += -lr * update_bias[0];
+            for (int i = 0; i < neuralSize; i++){
+                // LOG("update bias: " << update_bias[i]);
+                bias[i] += -lr/batch * update_bias[i];
+            }
         };
 
     private:
-        size_t neuralSize;
+        int neuralSize;
         int inputSize;
         unique_ptr<float[]> output;
         unique_ptr<float[]> input;
@@ -186,20 +197,32 @@ class Connected : public Layer {
         };
         
         void backward_bias(float * delta) {
-            update_bias[0] = 0;
-            for(int i = 0; i < neuralSize; i++){
-                update_bias[0] += delta[i];
+            for (int j = 0; j < neuralSize; j++){
+                update_bias[j] = 0;
             }
+            for(int b = 0; b < batch; b++) {
+                for(int i = 0; i < neuralSize; i++){
+                    update_bias[i] += delta[b*neuralSize + i]; 
+                }
+            }
+            
+            // for(int i = 0; i < neuralSize; i++){
+            //     update_bias[i] = 0;
+            //     for(int b = 0; b < batch; b++){
+            //         update_bias[i] += delta[b];
+            //     }
+            // }
         };
 };
 
 class Network {
     public:
+        Network(int batchSize): batch{batchSize} {};
         vector<shared_ptr<Layer>> layers;
         size_t n = 0;
         void forward_net(float * inp) {
             // copy input to the workspace
-            for(int i = 0; i < inputSize; i++){
+            for(int i = 0; i < batch * inputSize; i++){
                 workspace[i] = inp[i];
             }
 
@@ -211,15 +234,16 @@ class Network {
 
             // get output after forwarding 
             // cout << "output: " ;
-            for (int i = 0; i < outputSize; i++) {
+            for (int i = 0; i < batch * outputSize; i++) {
                 output[i] = workspace[i];
                 // cout << output[i] << " ";
             }
             // cout << endl;
         };
+
         void test_net(float * inp) {
             // copy input to the workspace
-            for(int i = 0; i < inputSize; i++){
+            for(int i = 0; i < batch * inputSize; i++){
                 workspace[i] = inp[i];
             }
 
@@ -230,20 +254,21 @@ class Network {
             }
 
             // get output after forwarding 
-            for (int i = 0; i < outputSize; i++) {
+            for (int i = 0; i < batch * outputSize; i++) {
                 output[i] = workspace[i];
             }
 
             float max = 0;
             int max_index = 0;
-            for (int i = 0; i < outputSize; i++) {
-                if (max < output[i]){
-                    max = output[i];
-                    max_index = i;
+            for (int b = 0; b < batch; b++) {
+                for (int i = 0; i < outputSize; i++) {
+                    if (max < output[b * outputSize + i]){
+                        max = output[b * outputSize + i];
+                        max_index = i;
+                    }
                 }
+                LOG("Output : " << max_index);
             }
-            LOG("Output value: " << max_index);
-            LOG("Max value " << max);
         };
         void backward_net() {
             for (int i = n-1; i > -1; i--) {
@@ -272,9 +297,11 @@ class Network {
 
         float calc_loss(float* gt, int n) {
             err = 0.0f;
-            for (int i = 0; i < n; i++) {
-                err += (1.f/2) * pow((gt[i] - output[i]), 2);
-                delta[i] = output[i] - gt[i];
+            for(int b = 0; b < batch; b++){
+                for (int i = 0; i < n; i++) {
+                    err += (1.f/2) * pow((gt[b * outputSize + i] - output[b * outputSize + i]), 2) / batch;
+                    delta[b * outputSize + i] = output[b * outputSize + i] - gt[b * outputSize + i];
+                }
             }
 
             return err;
@@ -282,9 +309,9 @@ class Network {
 
         void build() {
             LOG(maxSize << " " << outputSize);
-            workspace = make_unique<float[]>(maxSize);
-            output = make_unique<float[]>(outputSize);
-            delta = make_unique<float[]>(maxSize);
+            workspace = make_unique<float[]>(batch * maxSize);
+            output = make_unique<float[]>(batch * outputSize);
+            delta = make_unique<float[]>(batch * maxSize);
         };
     
     private:
@@ -292,44 +319,22 @@ class Network {
         size_t outputSize = 0;
         size_t maxSize = 0;
         float err = 0.0f;
+        int batch = 0;
         unique_ptr<float[]> delta;
         unique_ptr<float[]> output;
         unique_ptr<float[]> workspace;
 };
 
-unique_ptr<float[]> preprocess_input(image img) {
-    unique_ptr<float[]> input = make_unique<float[]>(img.size());
-    for(int i = 0; i < img.size(); i++){
-        input[i] = img[i] / 255.0;
-    }
-    return input;
-}
-
-unique_ptr<float[]> preprocess_gt(float label) {
-    unique_ptr<float[]> ground_truth = make_unique<float[]>(10);
-    ground_truth[label] = 1;
-    // for (int i = 0; i < 10; i++) {
-    //     LOG(ground_truth[i]);
-    // }
-    return ground_truth;
-}
-
 
 int main(int argc, char** argv) {
     /*TODO: 
-    1. test with multi layer
-    2. add more input dimension
+    1. Add batch processing (DONE)
+    2. using axpy in blas 
+    3. 
     */
-    // int inputSize = 8;
-    // int hiddenSize = 100;
-    // int hiddenSize2 = 200;
-    // int outputSize = 5;
-
-    // float * input = new float[inputSize] {0.4, 0.3,  0.7, 0.02, 0.3, 0.025, 0.05, 0.1};
-    // float * ground_truth = new float[outputSize] {0.42, 0.3, 0.19, 0.1};
-
     // Load data
-    mnist dataset;
+    int batchSize = 8;
+    mnist dataset{batchSize};
     size_t trainImageSize = dataset.read_training_images();
     size_t trainLabelSize = dataset.read_training_labels();
     assert(trainImageSize == trainLabelSize);
@@ -339,61 +344,40 @@ int main(int argc, char** argv) {
     int hiddenSize = 128;
     int outputSize = 10;
 
-    shared_ptr<Connected> conn1 = make_shared<Connected>(inputSize,hiddenSize);
-
-    shared_ptr<Connected> conn2 = make_shared<Connected>(hiddenSize,outputSize);
-
-    unique_ptr<Network> net = make_unique<Network>();
+    shared_ptr<Connected> conn1 = make_shared<Connected>(inputSize,hiddenSize, batchSize);
+    shared_ptr<Connected> conn2 = make_shared<Connected>(hiddenSize,outputSize, batchSize);
+    unique_ptr<Network> net = make_unique<Network>(batchSize);
     net->add_layer(conn1);
     net->add_layer(conn2);
 
     net->build();
 
-    float avg_err = 0;
-    for (int e = 0; e < 5; e++){
+    int epochs = 5;
+    for (int e = 0; e < epochs; e++){
         pBar bar;
+        float avg_err = 0;
         LOG("Epoch: " << e);
-        for (int d = 0; d < trainImageSize; d++){
-            if(d % (trainImageSize/100) == 0){
-                bar.update(1);
-                bar.print();
-            }
-            auto item = dataset.get_next_item();
-            unique_ptr<float[]> input = preprocess_input(get<0>(item));
-            unique_ptr<float[]> ground_truth = preprocess_gt(get<1>(item));
+        for (int d = 0; d < trainImageSize/batchSize; d++){
+            batch_item batch = dataset.get_next_batch(); 
+            unique_ptr<float[]> input = std::move(get<0>(batch));
+            unique_ptr<float[]> ground_truth = std::move(get<1>(batch));
+        
             net->forward_net(input.get());
+
             float err = net->calc_loss(ground_truth.get(), outputSize);
+            // LOG("Network err " << err);
             net->backward_net();
             net->update_net();
 
             avg_err = (avg_err*d + err)/(d+1);
-            bar.update_err(avg_err);
+            if(d % (trainImageSize/batchSize/100) == 0){
+                bar.update(1);
+                bar.print();
+                bar.update_err(avg_err);
+            }
         }
         LOG("");
-        for (int i = 0; i < 10; i++){
-            auto item = dataset.get_next_item();
-            LOG("Label number " << get<1>(item));
-            unique_ptr<float[]> input = preprocess_input(get<0>(item));
-            unique_ptr<float[]> ground_truth = preprocess_gt(get<1>(item));
-
-            net->test_net(input.get());
-        }
     }
 
-    // net->forward_net(input);
-    // float err = net->calc_loss(ground_truth, outputSize);
-    // LOG("Network error: " << err);
-    // net->backward_net();
-    // net->update_net();
-    
-    // int n_epochs = 1000;
-    // for (int e = 0; e < n_epochs; e++) {
-    //     LOG("Epoch " << e);
-    //     net->forward_net(input);
-    //     float err = net->calc_loss(ground_truth, outputSize);
-    //     LOG("Network error: " << err);
-    //     net->backward_net();
-    //     net->update_net();
-    // }
     return 0;
 }
