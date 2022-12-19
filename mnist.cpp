@@ -17,7 +17,7 @@ uint32_t mnist::read_header(const std::unique_ptr<char[]>& buffer, size_t positi
 
 
 int mnist::read_training_images() {
-    const std::string train_images_path = "train-images.idx3-ubyte";
+    const std::string train_images_path = "data/train-images.idx3-ubyte";
     std::ifstream train_images_file;
 
     // std::ios::in: open for reading
@@ -72,7 +72,7 @@ int mnist::read_training_images() {
 }
 
 int mnist::read_training_labels() {
-    const std::string train_labels_path = "train-labels.idx1-ubyte";
+    const std::string train_labels_path = "data/train-labels.idx1-ubyte";
     std::ifstream train_labels_file;
 
     // std::ios::in: open for reading
