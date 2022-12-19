@@ -206,12 +206,6 @@ class Connected : public Layer {
                 }
             }
             
-            // for(int i = 0; i < neuralSize; i++){
-            //     update_bias[i] = 0;
-            //     for(int b = 0; b < batch; b++){
-            //         update_bias[i] += delta[b];
-            //     }
-            // }
         };
 };
 
@@ -241,7 +235,7 @@ class Network {
             // cout << endl;
         };
 
-        void test_net(float * inp) {
+        void predict(float * inp) {
             // copy input to the workspace
             for(int i = 0; i < batch * inputSize; i++){
                 workspace[i] = inp[i];
@@ -330,7 +324,8 @@ int main(int argc, char** argv) {
     /*TODO: 
     1. Add batch processing (DONE)
     2. using axpy in blas 
-    3. 
+    3. Implement predict
+    4. Implement save weight and load weight function.
     */
     // Load data
     int batchSize = 8;
