@@ -14,12 +14,12 @@ class mnist {
     public:
         mnist(std::string datatype, int batch): datatype{datatype}, batch{batch} {
             if(datatype == "train") {
-                int num_images = read_images("train-images.idx3-ubyte");
-                int num_labels = read_labels("train-labels.idx1-ubyte");
+                int num_images = read_images("data/train-images.idx3-ubyte");
+                int num_labels = read_labels("data/train-labels.idx1-ubyte");
                 assert(num_images == num_labels);
             } else if (datatype == "test") {
-                int num_images = read_images("t10k-images.idx3-ubyte");
-                int num_labels = read_labels("t10k-labels.idx1-ubyte");
+                int num_images = read_images("data/t10k-images.idx3-ubyte");
+                int num_labels = read_labels("data/t10k-labels.idx1-ubyte");
                 assert(num_images == num_labels);
             } else {
                 std::cout << "invalid data type: ""train"" or ""test""" << std::endl;
