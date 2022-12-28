@@ -6,6 +6,7 @@
 
 #include "gemm.h"
 #include "mnist.h"
+#include "blas.h"
 #include "progress_bar.h"
 
 using namespace std;
@@ -133,7 +134,7 @@ class Connected : public Layer {
         void backward(float * delta) override {
             // update = delta * gradient_sigmoid * input
             for(int i = 0; i < batch * neuralSize; i++) {
-                delta[i] = gradient[i] * delta[i];
+                delta[i] *= gradient[i];
                 // LOG("delta backward: " << delta[i]);
             }
 
@@ -166,15 +167,16 @@ class Connected : public Layer {
 
         void update() override {
             float lr = 0.5f;
-            for (int i = 0; i < inputSize * neuralSize; i++) {
-                weights[i] += -lr/batch * update_weights[i];
-                // LOG("weight updated: " << weights[i]);
-            }
+            // for (int i = 0; i < inputSize * neuralSize; i++) {
+            //     weights[i] += -lr/batch * update_weights[i];
+            // }
+            axpy_cpu(inputSize * neuralSize, -lr/batch, update_weights.get(), 1, weights.get(), 1);
+
             // only 1 bias
-            for (int i = 0; i < neuralSize; i++){
-                // LOG("update bias: " << update_bias[i]);
-                bias[i] += -lr/batch * update_bias[i];
-            }
+            // for (int i = 0; i < neuralSize; i++){
+            //     bias[i] += -lr/batch * update_bias[i];
+            // }
+            axpy_cpu(neuralSize, -lr/batch, update_bias.get(), 1, bias.get(), 1);
         };
 
     private:
