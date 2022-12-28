@@ -237,7 +237,7 @@ class Network {
             // cout << endl;
         };
 
-        void predict(float * inp) {
+        unique_ptr<int[]> predict(float * inp) {
             // copy input to the workspace
             for(int i = 0; i < batch * inputSize; i++){
                 workspace[i] = inp[i];
@@ -254,17 +254,20 @@ class Network {
                 output[i] = workspace[i];
             }
 
-            float max = 0;
-            int max_index = 0;
+            unique_ptr<int[]> batch_index = make_unique<int[]>(batch);
             for (int b = 0; b < batch; b++) {
+                float max = 0;
+                int max_index = 0;
                 for (int i = 0; i < outputSize; i++) {
                     if (max < output[b * outputSize + i]){
                         max = output[b * outputSize + i];
                         max_index = i;
                     }
                 }
-                LOG("Output : " << max_index);
+                // LOG("Output: " << max_index);
+                batch_index[b] = max_index;
             }
+            return batch_index;
         };
         void backward_net() {
             for (int i = n-1; i > -1; i--) {
@@ -326,15 +329,13 @@ int main(int argc, char** argv) {
     /*TODO: 
     1. Add batch processing (DONE)
     2. using axpy in blas (DONE)
-    3. Implement predict
+    3. Implement predict (inprogress)
     4. Implement save weight and load weight function.
     */
     // Load data
-    int batchSize = 8;
-    mnist dataset{batchSize};
-    size_t trainImageSize = dataset.read_training_images();
-    size_t trainLabelSize = dataset.read_training_labels();
-    assert(trainImageSize == trainLabelSize);
+    int batchSize = 100;
+    mnist dataset{"train",batchSize};
+    int trainSize = dataset.get_dataset_size();
 
     // build model
     int inputSize = 784;
@@ -349,12 +350,12 @@ int main(int argc, char** argv) {
 
     net->build();
 
-    int epochs = 5;
+    int epochs = 10;
     for (int e = 0; e < epochs; e++){
         pBar bar;
         float avg_err = 0;
         LOG("Epoch: " << e);
-        for (int d = 0; d < trainImageSize/batchSize; d++){
+        for (int d = 0; d < trainSize/batchSize; d++){
             batch_item batch = dataset.get_next_batch(); 
             unique_ptr<float[]> input = std::move(get<0>(batch));
             unique_ptr<float[]> ground_truth = std::move(get<1>(batch));
@@ -367,7 +368,7 @@ int main(int argc, char** argv) {
             net->update_net();
 
             avg_err = (avg_err*d + err)/(d+1);
-            if(d % (trainImageSize/batchSize/100) == 0){
+            if(d % (trainSize/batchSize/100) == 0){
                 bar.update(1);
                 bar.print();
                 bar.update_err(avg_err);
@@ -375,6 +376,34 @@ int main(int argc, char** argv) {
         }
         LOG("");
     }
+
+    mnist test_set{"test", batchSize};
+    size_t testSize = test_set.get_dataset_size();
+
+    int true_count = 0;
+    int num_batch = testSize/batchSize;
+    for(int d = 0; d < testSize/batchSize; d++) {
+        batch_item batch = dataset.get_next_batch(); 
+        unique_ptr<float[]> input = std::move(get<0>(batch));
+        unique_ptr<float[]> ground_truth = std::move(get<1>(batch));
+
+        // LOG("batch " << d);
+        unique_ptr<int[]> batch_predictions = net->predict(input.get());
+        for(int i = 0; i < batchSize; i++){
+            int gt_index = 0;
+            for(int j = 0; j < 10; j++) {
+                if(ground_truth[i*10 + j] == 1) {
+                    gt_index = j;
+                    break;
+                }
+            }
+            // LOG("output each item " << batch_predictions[i] << " " << gt_index);
+            if(batch_predictions[i] == gt_index) {
+                true_count++;
+            }
+        }
+    }
+    LOG("Accuracy: " << true_count * 100.f/ (num_batch * batchSize));
 
     return 0;
 }

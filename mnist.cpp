@@ -16,27 +16,27 @@ uint32_t mnist::read_header(const std::unique_ptr<char[]>& buffer, size_t positi
 };
 
 
-int mnist::read_training_images() {
-    const std::string train_images_path = "data/train-images.idx3-ubyte";
-    std::ifstream train_images_file;
+int mnist::read_images(std::string path) {
+    const std::string images_path = path;
+    std::ifstream images_file;
 
     // std::ios::in: open for reading
     // std::ios::binary: operation performed in binary mode rather than text
     // std::ios::ate: (at end) the output position starts at the end of file
-    train_images_file.open(train_images_path, std::ios::in | std::ios::binary |std::ios::ate);
+    images_file.open(images_path, std::ios::in | std::ios::binary |std::ios::ate);
 
-    if (!train_images_file) {
+    if (!images_file) {
         LOG("Error open file"); 
     }
 
     // get current position, since we seek from end, it return file size
-    const auto size = train_images_file.tellg();     
-    std::unique_ptr<char[]> buffer(new char[size]);
+    const auto filesize = images_file.tellg();     
+    std::unique_ptr<char[]> buffer(new char[filesize]);
 
     // read the entire file at once
-    train_images_file.seekg(0, std::ios::beg); //seek to the begin of file.
-    train_images_file.read(buffer.get(), size); // buffer.get() return a pointer to the managed object
-    train_images_file.close(); // close file
+    images_file.seekg(0, std::ios::beg); //seek to the begin of file.
+    images_file.read(buffer.get(), filesize); // buffer.get() return a pointer to the managed object
+    images_file.close(); // close file
 
     if (!buffer) { return -1;} // return if cannot read buffer.
 
@@ -46,74 +46,74 @@ int mnist::read_training_images() {
         LOG("This is not training mnist dataset");
         return -1;
     } 
-    unsigned train_size = read_header(buffer, 1);
+    unsigned data_size = read_header(buffer, 1);
 
     unsigned image_width = read_header(buffer, 2);
     unsigned image_height = read_header(buffer, 3);
     imageSize = image_width * image_height;
 
-    assert(size==(image_height * image_width * train_size + 16));
+    assert(filesize==(image_height * image_width * data_size + 16));
 
     // cast to unsigned char is necessary cause signedness of char is platform-specific
     uint8_t *images_buffer = reinterpret_cast<uint8_t*>(buffer.get() + 16);
 
-    for (int i = 0; i < train_size; i++){
+    for (int i = 0; i < data_size; i++){
         image img;
         for(int j = 0; j < image_height * image_width; j++) {
             auto pixel = *images_buffer++;
             img.push_back(static_cast<uint8_t>(pixel));
         }
-        training_images.push_back(img);
+        images.push_back(img);
     }
-    if(train_size != dataset_size){
-        dataset_size = train_size;
+    if(data_size != dataset_size){
+        dataset_size = data_size;
     }
-    return training_images.size();
+    return images.size();
 }
 
-int mnist::read_training_labels() {
-    const std::string train_labels_path = "data/train-labels.idx1-ubyte";
-    std::ifstream train_labels_file;
+int mnist::read_labels(std::string path) {
+    const std::string labels_path = path;
+    std::ifstream labels_file;
 
     // std::ios::in: open for reading
     // std::ios::binary: operation performed in binary mode rather than text
     // std::ios::ate: (at end) the output position starts at the end of file
-    train_labels_file.open(train_labels_path, std::ios::in | std::ios::binary |std::ios::ate);
+    labels_file.open(labels_path, std::ios::in | std::ios::binary |std::ios::ate);
 
-    if (!train_labels_file) {
+    if (!labels_file) {
         LOG("Error open file"); 
     }
 
     // get current position, since we seek from end, it return file size
-    const auto size = train_labels_file.tellg();     
-    std::unique_ptr<char[]> buffer(new char[size]);
+    const auto size = labels_file.tellg();     
+    std::unique_ptr<char[]> buffer = std::make_unique<char[]>(size);
 
     // read the entire file at once
-    train_labels_file.seekg(0, std::ios::beg); //seek to the begin of file.
-    train_labels_file.read(buffer.get(), size); // buffer.get() return a pointer to the managed object
-    train_labels_file.close(); // close file
+    labels_file.seekg(0, std::ios::beg); //seek to the begin of file.
+    labels_file.read(buffer.get(), size); // buffer.get() return a pointer to the managed object
+    labels_file.close(); // close file
 
     if (!buffer) { return -1;} // return if cannot read buffer.
 
     unsigned magic = read_header(buffer, 0); // conver BE to LE representation
 
     if (magic != 0x801) {
-        LOG("This is not training mnist dataset");
+        LOG("This is not mnist label dataset file");
         return -1;
     } 
-    unsigned train_size = read_header(buffer, 1);
+    unsigned label_size = read_header(buffer, 1);
 
     // cast to unsigned char is necessary cause signedness of char is platform-specific
     uint8_t *labels_buffer = reinterpret_cast<uint8_t*>(buffer.get() + 8);
 
-    for (int i = 0; i < train_size; i++){
+    for (int i = 0; i <label_size; i++){
         uint8_t label = *labels_buffer++;
-        training_labels.push_back(label);
+        labels.push_back(label);
     }
-    if(train_size != dataset_size) {
-        dataset_size = train_size;
+    if(label_size != dataset_size) {
+        dataset_size = label_size;
     }
-    return training_labels.size();
+    return labels.size();
 }
 
 std::tuple<image, int> mnist::get_next_item() {
@@ -121,7 +121,7 @@ std::tuple<image, int> mnist::get_next_item() {
     if (index == dataset_size) {
         index = 0;
     }
-    return std::make_tuple(training_images[current_index], training_labels[current_index]);
+    return std::make_tuple(images[current_index], labels[current_index]);
 }
 
 batch_item mnist::get_next_batch() {
@@ -137,4 +137,8 @@ batch_item mnist::get_next_batch() {
         ground_truth[i*10 + label] = 1;
     }
     return std::make_tuple(std::move(input), std::move(ground_truth));
+}
+
+size_t mnist::get_dataset_size(){
+    return dataset_size;
 }
