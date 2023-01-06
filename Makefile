@@ -1,5 +1,5 @@
-main: main.cpp gemm.cpp
-	g++ -o main main.cpp gemm.cpp mnist.cpp blas.c -ggdb -O0
+main: main.cpp gemm.c
+	g++ -o main  main.cpp gemm.c mnist.cpp blas.c -Ofast
 
 example: example.cpp gemm.cpp
 	g++ -o example example.cpp gemm.cpp

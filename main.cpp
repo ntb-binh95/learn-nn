@@ -47,6 +47,8 @@ class Layer {
         virtual size_t get_input_size() = 0;
         virtual void backward(float * delta) = 0;
         virtual void update() = 0;
+        virtual void save_weight(ofstream &weight_file) = 0;
+        virtual void load_weight(ifstream &weight_file) = 0;
         int batch = 0;
 };
 
@@ -77,15 +79,15 @@ class Connected : public Layer {
             // bias[0] = 0; // bias should be size of output for more general case.
         };
 
-        void load_weight(float * w) {
-            for (int i = 0; i < neuralSize*inputSize; i++) {
-                weights[i] = w[i];
-            }
-        };
+        // void load_weight(float * w) {
+        //     for (int i = 0; i < neuralSize*inputSize; i++) {
+        //         weights[i] = w[i];
+        //     }
+        // };
 
-        void load_bias(float b) {
-            bias[0] = b;
-        };
+        // void load_bias(float b) {
+        //     bias[0] = b;
+        // };
         
         size_t get_size() override {
             return neuralSize;
@@ -94,6 +96,7 @@ class Connected : public Layer {
         size_t get_input_size() override {
             return  inputSize;
         };
+        
 
     protected:
         void forward(float * inp) override {
@@ -177,6 +180,16 @@ class Connected : public Layer {
             //     bias[i] += -lr/batch * update_bias[i];
             // }
             axpy_cpu(neuralSize, -lr/batch, update_bias.get(), 1, bias.get(), 1);
+        };
+
+        void save_weight(ofstream &weight_file) override {
+            weight_file.write(reinterpret_cast<const char *>(weights.get()), inputSize * neuralSize * sizeof(float));
+            weight_file.write(reinterpret_cast<const char *>(bias.get()), neuralSize * sizeof(float));
+        };
+
+        void load_weight(ifstream &weight_file) override {
+            weight_file.read(reinterpret_cast<char *>(weights.get()), inputSize * neuralSize * sizeof(float));
+            weight_file.read(reinterpret_cast<char *>(bias.get()), neuralSize * sizeof(float));
         };
 
     private:
@@ -312,6 +325,47 @@ class Network {
             output = make_unique<float[]>(batch * outputSize);
             delta = make_unique<float[]>(batch * maxSize);
         };
+
+        void save_weights() {
+            // save model
+            LOG("Saving model to " << saved_model);
+            int major = 0;
+            int minor = 1;
+            int revision = 0;
+            LOG("Writing version " << major << " " << minor << " " << revision);
+
+            ofstream out_weight;
+            out_weight.open(saved_model, ios::binary | ios::out);
+            out_weight.write(reinterpret_cast<const char *>(&major), sizeof(int));
+            out_weight.write(reinterpret_cast<const char *>(&minor), sizeof(int));
+            out_weight.write(reinterpret_cast<const char *>(&revision), sizeof(int));
+
+            for (int i = 0; i < n; i++) {
+                layers[i]->save_weight(out_weight);
+            }
+
+            out_weight.close();
+        }
+
+        void load_weights() {
+            // load model
+            int major = 0;
+            int minor = 0;
+            int revision = 0;
+
+            ifstream in_weight;
+
+            in_weight.open(saved_model, ios::binary | ios::in);
+            in_weight.read(reinterpret_cast<char *>(&major), sizeof(int));
+            in_weight.read(reinterpret_cast<char *>(&minor), sizeof(int));
+            in_weight.read(reinterpret_cast<char *>(&revision), sizeof(int));
+            LOG("Reading version " << major << "." << minor << "." << revision);
+
+            for(int i = 0; i < n; i++) {
+                layers[i]->load_weight(in_weight);
+            }
+            in_weight.close();
+        }
     
     private:
         size_t inputSize = 0;
@@ -322,6 +376,7 @@ class Network {
         unique_ptr<float[]> delta;
         unique_ptr<float[]> output;
         unique_ptr<float[]> workspace;
+        string saved_model = "my.weight";
 };
 
 
@@ -332,14 +387,19 @@ int main(int argc, char** argv) {
     3. Implement predict (inprogress)
     4. Implement save weight and load weight function.
     */
+
+    // configuration parameter
+    bool isTest = false;
+    bool isTrain = false;
+
     // Load data
-    int batchSize = 100;
+    int batchSize = 10;
     mnist dataset{"train",batchSize};
     int trainSize = dataset.get_dataset_size();
 
     // build model
     int inputSize = 784;
-    int hiddenSize = 128;
+    int hiddenSize = 256;
     int outputSize = 10;
 
     shared_ptr<Connected> conn1 = make_shared<Connected>(inputSize,hiddenSize, batchSize);
@@ -350,7 +410,10 @@ int main(int argc, char** argv) {
 
     net->build();
 
-    int epochs = 10;
+    // train model
+    // isTrain = true;
+    if(isTrain) {
+    int epochs = 1;
     for (int e = 0; e < epochs; e++){
         pBar bar;
         float avg_err = 0;
@@ -376,34 +439,40 @@ int main(int argc, char** argv) {
         }
         LOG("");
     }
+    net->save_weights();
+    }
 
-    mnist test_set{"test", batchSize};
-    size_t testSize = test_set.get_dataset_size();
+    isTest = true;
+    if (isTest) {
+        net->load_weights();
+        mnist test_set{"test", batchSize};
+        size_t testSize = test_set.get_dataset_size();
 
-    int true_count = 0;
-    int num_batch = testSize/batchSize;
-    for(int d = 0; d < testSize/batchSize; d++) {
-        batch_item batch = dataset.get_next_batch(); 
-        unique_ptr<float[]> input = std::move(get<0>(batch));
-        unique_ptr<float[]> ground_truth = std::move(get<1>(batch));
+        int true_count = 0;
+        int num_batch = testSize/batchSize;
+        for(int d = 0; d < testSize/batchSize; d++) {
+            batch_item batch = dataset.get_next_batch(); 
+            unique_ptr<float[]> input = std::move(get<0>(batch));
+            unique_ptr<float[]> ground_truth = std::move(get<1>(batch));
 
-        // LOG("batch " << d);
-        unique_ptr<int[]> batch_predictions = net->predict(input.get());
-        for(int i = 0; i < batchSize; i++){
-            int gt_index = 0;
-            for(int j = 0; j < 10; j++) {
-                if(ground_truth[i*10 + j] == 1) {
-                    gt_index = j;
-                    break;
+            // LOG("batch " << d);
+            unique_ptr<int[]> batch_predictions = net->predict(input.get());
+            for(int i = 0; i < batchSize; i++){
+                int gt_index = 0;
+                for(int j = 0; j < 10; j++) {
+                    if(ground_truth[i*10 + j] == 1) {
+                        gt_index = j;
+                        break;
+                    }
+                }
+                // LOG("output each item " << batch_predictions[i] << " " << gt_index);
+                if(batch_predictions[i] == gt_index) {
+                    true_count++;
                 }
             }
-            // LOG("output each item " << batch_predictions[i] << " " << gt_index);
-            if(batch_predictions[i] == gt_index) {
-                true_count++;
-            }
         }
+        LOG("Accuracy: " << true_count * 100.f/ (num_batch * batchSize));
     }
-    LOG("Accuracy: " << true_count * 100.f/ (num_batch * batchSize));
 
     return 0;
 }
