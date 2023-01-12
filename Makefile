@@ -1,13 +1,5 @@
-main: main.cpp gemm.c
-	g++ -o main  main.cpp gemm.c mnist.cpp blas.c -Ofast
-
-example: example.cpp gemm.cpp
-	g++ -o example example.cpp gemm.cpp
-
-test: test.cpp gemm.cpp
-	g++ -o test test.cpp gemm.cpp
+main: main.cpp 
+	g++ -o main  main.cpp blas/gemm.c src/mnist.cpp blas/blas.c src/connected.cpp src/network.cpp -Ofast -Iinclude/
 
 clean:
 	rm -rf main
-	rm -rf example
-	rm -rf test
