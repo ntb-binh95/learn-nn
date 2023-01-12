@@ -1,8 +1,6 @@
 #ifndef _LAYER_
 #define _LAYER_
 
-#include <iostream>
-
 typedef enum {CONNECTED, CONVOLUTION, BLANK} LAYER_TYPE;
 
 class Layer {

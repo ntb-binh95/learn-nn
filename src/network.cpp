@@ -48,17 +48,13 @@ void Network::forward_net(float * inp) {
 
     // loop over all layer in network
     for (int l = 0; l < n; l++) {
-        // LOG("Forwarding layer " << l << "!");
         layers[l]->forward(workspace.get());
     }
 
     // get output after forwarding 
-    // cout << "output: " ;
     for (int i = 0; i < batch * outputSize; i++) {
         output[i] = workspace[i];
-        // cout << output[i] << " ";
     }
-    // cout << endl;
 };
 
 void Network::backward_net() {

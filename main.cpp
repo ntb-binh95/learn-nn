@@ -26,10 +26,7 @@ void show_matrix(float* mat, int rows, int cols) {
 
 int main(int argc, char** argv) {
     /*TODO: 
-    1. Add batch processing (DONE)
-    2. using axpy in blas (DONE)
-    3. Implement predict (inprogress)
-    4. Implement save weight and load weight function. (Done)
+    1. Implement Convolution (inprogress)
     */
 
     // configuration parameter
