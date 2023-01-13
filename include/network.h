@@ -2,6 +2,8 @@
 #define _NETWORK_
 
 #include "layer.h"
+#include "log.h"
+#include <iostream>
 
 class Network {
     public:
@@ -15,9 +17,12 @@ class Network {
             if(!n) {
                 inputSize = l->get_input_size();
                 maxSize = inputSize;
+                std::cout << "input size " << inputSize << std::endl;
             }
             outputSize = l->get_size();
+            std::cout << " output size " << outputSize << std::endl;
             if (outputSize > maxSize) {
+                std::cout << "max size " << maxSize << std::endl;
                 maxSize = outputSize;
             }
             layers.push_back(l);

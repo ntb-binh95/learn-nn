@@ -14,32 +14,34 @@ class Convolution : public Layer {
             random_initialize();
         };
         
-        // size_t get_size() override;
-        // size_t get_input_size() override;
+        size_t get_size() override;
+        size_t get_input_size() override;
 
     protected:
-        // void forward(float * inp) override;
-        // void backward(float * delta) override;
-        // void update() override;
-        // void save_weight(std::ofstream &weight_file) override;
-        // void load_weight(std::ifstream &weight_file) override;
+        void forward(float * inp) override;
+        void backward(float * delta) override;
+        void update() override;
+        void save_weight(std::ofstream &weight_file) override;
+        void load_weight(std::ifstream &weight_file) override;
 
     private:
         int kernelSize;
         int in_channels, h, w;
-        int out_channels;
+        int out_channels, outWidth, outHeight;
         int pad, stride;
         int weightSize, biasSize;
-        
-        // std::unique_ptr<float[]> input;
+        int outputSize, inputSize;
+
+        std::unique_ptr<float[]> output;
+        std::unique_ptr<float[]> input;
         std::unique_ptr<float[]> weights;
         std::unique_ptr<float[]> bias;
         std::unique_ptr<float[]> update_weights;
         std::unique_ptr<float[]> update_bias;
-        // std::unique_ptr<float[]> gradient;
-        // std::unique_ptr<float[]> layer_delta;
-        // float sigmoid(float x);
-        // float gradient_sigmoid(float x);
+        std::unique_ptr<float[]> gradient;
+        std::unique_ptr<float[]> layer_delta;
+        float relu(float x);
+        float gradient_relu(float x);
         // void backward_bias(float * delta);
         void random_initialize();
         int getOutputWidth(int w, int s, int p);

@@ -17,4 +17,8 @@ void gemm_cpu(int TA, int TB, int M, int N, int K, float ALPHA,
         float *B, int ldb,
         float BETA,
         float *C, int ldc);
+
+void im2col_cpu(float* data_im,
+     int channels,  int height,  int width,
+     int ksize,  int stride, int pad, float* data_col);
 #endif

@@ -70,6 +70,7 @@ void Network::update_net() {
 
 
 void Network::build() {
+    std::cout << "build " << maxSize << " " << outputSize;
     workspace = std::make_unique<float[]>(batch * maxSize);
     output = std::make_unique<float[]>(batch * outputSize);
     delta = std::make_unique<float[]>(batch * maxSize);

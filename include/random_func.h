@@ -1,6 +1,8 @@
 #ifndef _RANDFUNC_
 #define _RANDFUNC_
 
+#define TWO_PI 6.2831853071795864769252866f 
+
 float rand_uniform(float min, float max) {
     if (max < min) {
         float swap = min;
